@@ -1,0 +1,23 @@
+version: '2'
+services:
+  web:
+    build: .
+    command: npm start
+    volumes:
+      - .:/nodejs-express-sequelize-postgresql
+      - /nodejs-express-sequelize-postgresql/node_modules
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+    environment:
+      DATABASE_URL: postgres://postgres:0000@postgres:5432/automl
+  postgres:
+    image: postgres:9.6.2-alpine
+    volumes:
+      - type: bind
+        source: ./app/db/dev/dbConnection.sql
+        target: /dbConnection.sql
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: automl

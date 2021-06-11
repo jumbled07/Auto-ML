@@ -1,0 +1,69 @@
+CREATE DATABASE AutoML
+
+CREATE TABLE Project(
+  projectId VARCHAR(100) PRIMARY KEY,  
+  evaluationId VARCHAR(100)[], 
+  datasetId VARCHAR(100)[],
+  networkId VARCHAR(100)[]);
+
+CREATE TABLE users(
+	userName VARCHAR(128) UNIQUE NOT NULL,
+	password VARCHAR(128) NOT NULL,
+	createdDate TIMESTAMPTZ,
+	projectId VARCHAR(100) REFERENCES Project ON DELETE CASCADE);
+
+CREATE TABLE File(
+	fileId VARCHAR(100) PRIMARY KEY ,
+	fileName VARCHAR(100) , 
+	path VARCHAR(100) , 
+	fileSize VARCHAR(100) ,
+	fileType VARCHAR(100) ,
+	status VARCHAR(100) ,
+	createdon TIMESTAMPTZ);
+
+
+CREATE TABLE Networks(
+	networkId VARCHAR(100) PRIMARY KEY ,
+	name VARCHAR(100) ,
+	fileId VARCHAR(100)[] ,
+	projectId VARCHAR(100) REFERENCES Project ON DELETE CASCADE
+	);
+
+CREATE TABLE Datasets(
+	datasetId VARCHAR(100) PRIMARY KEY ,
+	name VARCHAR(100)  ,
+	fileId VARCHAR(100)[],
+	projectId VARCHAR(100) REFERENCES Project ON DELETE CASCADE
+	);
+
+CREATE TABLE Logs(
+	path VARCHAR(100) PRIMARY KEY , 
+	processId INT UNIQUE ,
+	status VARCHAR(100) ,
+	projectId VARCHAR(100) REFERENCES Project ON DELETE CASCADE ,
+	networkId VARCHAR(100) ,
+    datasetId VARCHAR(100)[]
+    );
+
+CREATE TABLE Error(
+	code INT PRIMARY KEY ,
+	message TEXT );
+
+
+CREATE TABLE Predictions(
+	evaluationId VARCHAR(100) PRIMARY KEY ,
+	bestModel VARCHAR(100) REFERENCES File(fileId) ON DELETE CASCADE ,
+	testFileId VARCHAR(100) REFERENCES File(fileId) ON DELETE CASCADE ,
+	specsFileId VARCHAR(100) REFERENCES File(fileId) ON DELETE CASCADE ,
+	visibility VARCHAR(100) ,
+	networkId VARCHAR(100) ,
+	datasetId VARCHAR(100)[],
+	datasetName VARCHAR(100)[],
+	networkName VARCHAR(100),
+	modelName VARCHAR(100) UNIQUE,
+	modelDescription TEXT,
+	trainTime TIME,
+	projectId VARCHAR(100) REFERENCES Project ON DELETE CASCADE,
+	path VARCHAR(100) REFERENCES Logs ON DELETE CASCADE
+	);
+
