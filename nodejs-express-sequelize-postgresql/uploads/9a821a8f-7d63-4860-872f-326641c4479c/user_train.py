@@ -7,6 +7,7 @@ from sklearn import svm, datasets
 import sklearn.model_selection as model_selection
 from sklearn.metrics import accuracy_score
 import numpy as np
+from pathlib import Path
 # from optuna.integration.tensorboard import TensorBoardCallback
 
 dataset = datasets.load_iris()
@@ -14,8 +15,6 @@ pathDir=None
 X = dataset.data[:, :2]
 y = dataset.target
 X_train, X_test, y_train, y_test = model_selection.train_test_split(X, y, train_size=0.80, test_size=0.20, random_state=101)
-
-
 
 def dataloader(filename):
     dataset = datasets.load_iris()
@@ -25,16 +24,20 @@ def dataloader(filename):
     X_train, X_test, y_train, y_test = model_selection.train_test_split(X, y, train_size=0.80, test_size=0.20, random_state=101)
     return X_test, y_test
 
-def bestmodel(study):
+def bestmodel(path):
     #path= str(study.best_trial.number)
     #modelname= path+ ".h5"
     #best_model = tf.keras.models.load_model(modelname)
-    with open("{}.pickle".format(study.best_trial.number), "rb") as fin:
+    path =str(path)
+    script_location = Path(__file__).absolute().parent
+    file_location = script_location / path
+    with open("{}.pickle".format(file_location), "rb") as fin:
         best_model=pickle.load(fin)
     return best_model
 
-def getPath(path):
-    pathDir=path
+
+# def getPath(path):
+#     pathDir=path
 
 def train_test_model(C: float, gamma: float) -> float:
 
@@ -45,11 +48,11 @@ def train_test_model(C: float, gamma: float) -> float:
     return accuracy, model
 
 
-def objective(trial: optuna.trial.Trial) -> float:
+def objective(trial: optuna.trial.Trial, path) -> float:
     C = trial.suggest_int("C", 1.0, 100.0)
     gamma = trial.suggest_int("gamma", 1.0, 100.0)
     accuracy, model = train_test_model(C, gamma)  # type: ignore
-    pathDir+=trial.number
+    pathDir=path+str(trial.number)
     with open("{}.pickle".format(pathDir), "wb") as fout:
         pickle.dump(model, fout)
     #path= str(trial.number)

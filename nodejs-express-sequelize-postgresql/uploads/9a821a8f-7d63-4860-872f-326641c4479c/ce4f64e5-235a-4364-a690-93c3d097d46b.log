@@ -1,0 +1,5 @@
+A new study created in memory with name: no-name-51b3f148-e193-4908-91c9-9f9fc44d739b
+Resume optimization.
+Trial 0 finished with value: 0.5666666666666667 and parameters: {'C': 94, 'gamma': 86}. Best is trial 0 with value: 0.5666666666666667.
+Trial 1 finished with value: 0.6333333333333333 and parameters: {'C': 22, 'gamma': 42}. Best is trial 1 with value: 0.6333333333333333.
+You need to set up the pruning feature to utilize `plot_intermediate_values()`

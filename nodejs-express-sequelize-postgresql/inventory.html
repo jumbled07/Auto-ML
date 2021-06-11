@@ -1,12 +1,124 @@
-<!DOCTYPE html>
+<!-- <!DOCTYPE html>
+<html lang="en">
+    <head>
+        <title>Trained Models</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+      <script type="text/javascript">
+      $(document).ready(function() {
+        var data = $.parseJSON($.ajax({
+          url: "http://localhost:8080/inventory",
+          type: "GET",
+          dataType: "json",
+          async: false
+        }).responseText);
+
+        var x= data.evaluationid;
+        console.log(x);
+        show(data);
+      </script>
+        <script type="text/javascript">
+          function show(data) {
+    let tab = 
+        `<tr>
+          <th>evaluationid</th>
+         </tr>`;
+    
+    // Loop to access all rows 
+    for (let r of data.list) {
+        tab += `<tr> 
+    <td>${r.evaluationid} </td>          
+</tr>`;
+    }
+    // Setting innerHTML as tab variable
+    document.getElementById("models").innerHTML = tab;
+}
+        </script>
+        </head>
+      <body>
+        <table id="models"></table>
+    </body>
+</html> -->
+
+
+
+
+<!-- <!DOCTYPE html>
 <html>
-<head>
-<title>Page Title</title>
-</head>
+    <head>
+        <script type="text/javascript" src="people.json"></script>
+        <script type="text/javascript" >
+            function load() {
+                var mydata = JSON.parse(rows);
+                alert(mydata.evaluationid)
+                let tab = 
+        `<tr>
+          <th>evaluationid</th>
+         </tr>`;
+    
+    // Loop to access all rows 
+    for (let r of mydata.rows) {
+        tab += `<tr> 
+    <td>${r.evaluationid}</td>          
+</tr>`;
+    }
+    // Setting innerHTML as tab variable
+    document.getElementById("models").innerHTML = tab;
+    }
+        </script>
+    </head>
+    <body onload="load()">
+        <table id="models"></table> 
+    </body>
+</html> -->
+
+
+<!-- <!DOCTYPE html>
+<html>
 <body>
+  <div id="demo">
+    <button type="button"
+      onClick="loadXMLDoc()">
+      Change Content
+    </button>
+  </div>
 
-<h1>My First Heading</h1>
-<p>My first paragraph.</p>
-
+  <script type="text/javascript">
+    function loadXMLDoc(){
+      var xhttp = new XMLHttpRequest();
+      xhttp.onreadystatechange = funtion(){
+        if(this.state==200){
+          document.getElementById("demo").innerHTML= this.responseText;
+        }
+      };
+      xhttp.open("GET", "people.txt", true);
+      xhttp.send()''
+    }
+  </script>
 </body>
+</html> -->
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Trained Models</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+    <script>
+      var dyata = document.createElement("rows");
+      $(document).ready(function() {
+        $.ajax({
+          url: "http://localhost:8080/inventory?eval_id",
+          type: "GET",
+          success: function(result) {
+            console.log(result[0]);
+            // for(int i=0; i<result.length; i++)
+            $.each(result, function(i){
+            dyata.innerHTML =  `'ModelName: ' ${result[i].modelName}<br>`+`'evaluationid: ' ${result[i].evaluationid}<br>`+`'projectid: ' ${result[i].projectid}<br>`+`'bestmodelid: ' ${result[i].bestmodel}<br>` + `'datasetName: ' ${result[i].datasetName}<br>`+ `'networkName: ' ${result[i].networkName}<br>` + `'Description: ' ${result[i].modelDescription}<br>`
+          });
+            $("body").append(dyata);
+        }
+      });
+      });
+    </script>
+  </head>
+  <body></body>
 </html>

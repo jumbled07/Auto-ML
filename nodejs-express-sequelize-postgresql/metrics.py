@@ -7,24 +7,16 @@ from matplotlib import pyplot as f
 from sklearn.metrics import roc_curve, plot_roc_curve,confusion_matrix,plot_confusion_matrix,plot_precision_recall_curve
 from sklearn.model_selection import cross_val_predict
 import sys
+from pathlib import Path
 
-
-def testing(filename, testfile):
-	study = joblib.load(filename + '.pkl')
-	best_model = user.bestmodel(study)
+def testing(testfile, bestmodelPath):
+	# study = joblib.load(filename + '.pkl')
+	# best_model = user.bestmodel(study)
+	best_model = user.bestmodel(bestmodelPath)
 	x_true, y_true = user.dataloader(testfile)
 	print(y_true)
 	print(x_true.shape)
 	y_probas = best_model.predict(x_true)
-	
-	optuna.visualization.matplotlib.plot_edf(study)
-	f.savefig(filename + " 1.png", bbox_inches='tight', dpi=600)
-	optuna.visualization.matplotlib.plot_intermediate_values(study)
-	f.savefig(filename + " 2.png", bbox_inches='tight', dpi=600)
-	optuna.visualization.matplotlib.plot_optimization_history(study)
-	f.savefig(filename + " 3.png", bbox_inches='tight', dpi=600)
-	optuna.visualization.matplotlib.plot_parallel_coordinate(study)
-	f.savefig(filename + " 4.png", bbox_inches='tight', dpi=600)
 	return  y_probas, y_true, best_model, x_true
 
 def plot_roc_curve(fpr, tpr, label=None):
@@ -59,7 +51,7 @@ def precision(filename, best_model, x_true, y_true):
                        title="Digits Precision-Recall Curve", figsize=(12,6));
 	f.savefig(filename + "_precision.png", bbox_inches='tight', dpi=600)
 
-def confusion(filename, y_probas, y_true, best_model, x_true):
+def confusion(path, y_probas, y_true, best_model, x_true):
 	# fig = f.figure(fig, size=(15,6))
 	# ax2 = f.add_subplot(122)
 	print(y_true)
@@ -67,22 +59,20 @@ def confusion(filename, y_probas, y_true, best_model, x_true):
 	# cn = confusion_matrix(y_true, y_probas);
 	# print("cn")
 	# print(cn)
+	script_location = Path(__file__).absolute().parent
+	file_location = script_location / path
+	file_location = str(file_location)
 	plot_confusion_matrix(best_model, x_true, y_true, cmap=f.cm.Blues)
-	f.savefig(filename + "_confusion.png", bbox_inches='tight', dpi=600)
+	f.savefig(file_location + "_confusion.png", bbox_inches='tight', dpi=600)
 
 if __name__ == "__main__":
 	name = sys.argv[1]
-	user = __import__(name, globals(), locals(), ['dataloader', 'bestmodel'])
+	user = __import__(name, globals(), locals(), ['dataloader', 'bestmodel'],0)
 	testfile = sys.argv[2]
-	filename = sys.argv[3]
-	y_probas, y_true, best_model, x_true =testing(filename, testfile)
-	# curve =sys.argv[4]
-	# if curve=='1':
-	# 	roc(filename, best_model, x_true, y_true, y_probas)
-	# curve =sys.argv[5]
-	# if curve=='1':
-	# 	confusion(filename, y_probas, y_true, best_model, x_true)
-	curve =sys.argv[6]
+	pathConfusion = sys.argv[3]
+	bestmodelPath = sys.argv[5]
+	y_probas, y_true, best_model, x_true =testing(testfile,bestmodelPath)
+	curve =sys.argv[4]
 	if curve=='1':
-		precision(filename, best_model, x_true, y_true)
+		confusion(pathConfusion, y_probas, y_true, best_model, x_true)
 	sys.exit(0)

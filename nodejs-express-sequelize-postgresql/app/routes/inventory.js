@@ -3,6 +3,7 @@ var router = express.Router();
 var pool = require('../db/dev/pool');
 var bodyParser = require('body-parser');
 var fs = require('fs'); 
+const virtualFs = new (require('memfs').Volume)();
 var multer = require('multer');
 var spawn = require('child_process').spawn;
 var cors = require('cors');
@@ -118,18 +119,34 @@ var upload = multer({
     }
  });
 
+router.get('/inventory/in/:eval_id', async(req,res)=>{
+    res.sendfile('inventory.html');
+})
+
  router.get('/inventory' , async(req,res) => {
     try
     {
         var vis = "Yes";
+        var eid = "6304c4ec-94bb-4c3a-b5d8-0e533f5dd7eb";
+        var up = await pool.query("UPDATE Predictions SET visibility = '"+vis+"' where evaluationId='"+eid+"' "); 
         var models = await pool.query("SELECT * FROM Predictions where visibility = '"+vis+"' ");
-        res.json(models.rows);
+        var result = models.rows;
+        // res.json(models.rows);
+        // fs.writeFile ("people.txt", JSON.stringify(models), function(err) {
+        //     if (err) throw err;
+        //     console.log('complete');
+        //     }
+        // );
+        console.log("hello")
+        res.status(200).json(result);
+        // res.sendfile('inventory.html', {result:result});
     }
     catch(err)
     {
         console.error(err.message);
     }
- })
+ });
+// Function to hide the loader
 
  router.get('/inventory/:eval_id' ,async(req,res) => {
     try{
@@ -139,7 +156,7 @@ var upload = multer({
         req.session.customer_id= uuidStringify(parsedId);
         console.log(customer_id);
         var chosen = await pool.query("SELECT * FROM Predictions where evaluationiD = '"+evalID+"' ");
-        res.status(200).json(chosen.rows);
+        res.status(200).json(chosen);
     }
     catch(err)
     {
@@ -147,9 +164,10 @@ var upload = multer({
     }
  });
 
-router.get('/inventory/:eval_id/testInput/:customer_id' , async(req,res) => {
+
+router.get('/inventory/:eval_id/testInput' , async(req,res) => {
     res.sendfile("fileupload.html")
-})
+});
 
  router.post('/inventory/testInput' , upload.fields(
     [
@@ -199,28 +217,56 @@ router.get('/inventory/:eval_id/testInput/:customer_id' , async(req,res) => {
  	}
    
 
- })
+ });
 
- router.get('/inventory/:eval_id/testing/:customer_id' , async(req,res) => {
+ router.get('/inventory/:eval_id/testing' , async(req,res) => {
     try{
+        //var modelID = await pool.query("SELECT bestmodelID FROM Predictions where eval_id= '"+evalID+"'");
+        //var model = await pool.query("SELECT path FROM File where fileId='"+modelID+"'");
+        //console.log("1");
         var evalID = req.params.eval_id;
-        var customer_id = req.params.customer_id;
-        var modelID = await pool.query("SELECT bestmodelID FROM Predictions where eval_id= '"+evalID+"'");
-        var model = await pool.query("SELECT path FROM File where fileId='"+modelID+"'");
-        // var model = "F:/Automated-MLpipeline/nodejs-express-sequelize-postgresql/0.pickle";
-        var parent_dir = "F:/Automated-MLpipeline/nodejs-express-sequelize-postgresql/";
-        parent_dir+= customer_id;
-        parent_dir+="/";
-        let dir = "./";
-        dir+= customer_id;
-        var testID = await pool.query("SELECT testFileId FROM Predictions where eval_id = '"+evalID+"'");
+        var bestmodelidq = await pool.query("SELECT bestModel FROM predictions where evaluationId='"+evalID+"'");
+		var bestmodelid=(bestmodelidq.rows[0].bestmodel).toString();
+		//console.log("2");
+		var bestmodelPathq = await pool.query("SELECT path FROM File where fileId= '"+bestmodelid+"'");
+		var bestmodelPath= (bestmodelPathq.rows[0].path).toString();
+		// bestmodelPath= JSON.stringify(bestmodelPath);
+		//console.log("3");
+
+        //uploads/customerid
+        var dir = `./uploads/${req.session.customer_id}`;
+        var testID = await pool.query("SELECT testFileId FROM Predictions where evaluationId = '"+evalID+"'");
         var testFile = await pool.query("SELECT path FROM File where fileId = '"+testID+"'");
+        //console.log("4");
         var before=[];
         var after=[];
-        var fsdir = dir+ "/";
-        before = fs.readdir(fsdir, {withFileTypes: true}).filter(item => !item.isDirectory()).map(item => item.name);
+        var fsdir = `./uploads/${req.session.customer_id}`;
+
+        // virtualFs.readdirSync(fsdir, (err, files) => {
+        //          files.forEach(file => {
+        //              before.push(file);
+        //           });
+        //          });
+        // fs.readdir(fsdir)
+        // .then(function(err,items) {
+        //     items.map((file) => {
+        //         before.push(file); // fileList is ready here! do whatever you want before it resolves to caller
+        //     });
+        // })
+        // .catch(function(e) {
+        //     // something bad happened; throw error or handle it as per your needs
+        //     throw new Error(e);
+        // });
+        before = fs.readdirSync(fsdir, {withFileTypes: true}).map(item => item.name);
+        console.log("done");
         console.log(before);
-        var child = spawn('python', ['test.py',`${model}`,`${dir}`] );
+
+        var projectIDq = await pool.query("SELECT projectId from Predictions where evaluationId = '"+evalID+"'");
+        var projectID = (projectIDq.rows[0].projectid).toString();
+        // projectID = JSON.stringify(projectID);
+        console.log(projectID);
+        var path= `./uploads/${projectID}/test.py`
+        var child = spawn('python', [`${path}`,`${evalID}`,`${dir}`] );
 
         child.on('error',(err) => {
             console.log(' failed to start  child process ' + err);
@@ -235,10 +281,10 @@ router.get('/inventory/:eval_id/testInput/:customer_id' , async(req,res) => {
         });
         child.on('exit' , async(code , signal) => {
 			if(code==0) {
-				after = fs.readdir(fsdir, {withFileTypes: true}).filter(item => !item.isDirectory()).map(item => item.name);
+				after = fs.readdirSync(fsdir, {withFileTypes: true}).map(item => item.name);
 				var difference = after.filter(x => !before.includes(x));
 				console.log(difference);
-				res.write(JSON.stringify({ newfiles: difference, parent_dir: parent_dir}));
+				res.write(JSON.stringify({ newfiles: difference, fsdir: fsdir}));
                 res.status(200).end();
 			}
 			else res.status(400).send("error");

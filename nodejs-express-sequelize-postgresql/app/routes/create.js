@@ -17,7 +17,8 @@ var session = require('express-session')
 var http    = require('http'),
     io      = require('socket.io'),
     fs      = require('fs');
-
+    util = require('util');
+var ps = require('ps-node');
 var spawn = require('child_process').spawn;
 router.use(cors());
 router.use(express.json());
@@ -36,6 +37,7 @@ router.use(session({secret: 'Your_Secret_Key',
 // var filename = 0 , child , logfilename = "" , studyfile = ""; 
 // var datafile_id1=[];
 // var network_id1;
+
 
 var storage = multer.diskStorage({ 
     destination: function (req, file, cb) {
@@ -91,6 +93,8 @@ const authenticateJWT = (req, res, next) => {
         res.sendStatus(401);
     }
 };
+
+var processDict = {};
 
 router.get('/home', async(req,res) =>{
 	res.sendfile("home.html");
@@ -302,7 +306,7 @@ router.post('/dashboard/:projectID/networkcodes', upload.fields(
         	name : 'userfile' ,
         	maxCount : 10
         }
-    ]), authenticateJWT,  async(req,res) =>{
+    ]),  async(req,res) =>{
 	try{
 		var projectID = req.params.projectID;
 		var netname= req.body.netname;
@@ -371,13 +375,13 @@ router.get('/dashboard/:projectId/train' , authenticateJWT , async(req,res) => {
 	}
 });
 
-router.get('/dashboard/:projectId/train/:ntwkfile_id/(:datafile_id)*', authenticateJWT, async (req,res) =>{
+router.get('/dashboard/:projectId/train/:ntwkfile_id/(:datafile_id)*', async (req,res) =>{
 	try{
 		var projectID= req.params.projectId;
 		var nfile_id = req.params.ntwkfile_id;
 		var dfile_id = [req.params.datafile_id].concat(req.params[0].split('/').slice(0));
-		var direction = req.body.direction;
-		var nametrain = req.body.nametrain;
+		req.session.direction = req.body.direction;
+		req.session.nametrain = req.body.nametrain;
 
 		var dfiles=[];
 		for(var i=1; i<dfile_id.length; i++){
@@ -394,13 +398,14 @@ router.get('/dashboard/:projectId/train/:ntwkfile_id/(:datafile_id)*', authentic
 		var logfile_id = uuidv4();
 		var parsedId= uuidParse(logfile_id);
 		var logfile_id= uuidStringify(parsedId);
-		var logpath = `./${projectID}/${req.session.logfilename}`; 
+		var logpath = `./uploads/${projectID}/${req.session.logfilename}`; 
 		
 		console.log("1");  
 		req.session.studyfile = req.session.filename + '.pkl';
 		var studyfile_id = uuidv4();
 		var parsedId= uuidParse(studyfile_id);
 		var studyfile_id=uuidStringify(parsedId);
+		var studypath = `./uploads/${projectID}/${req.session.studyfile}`; 
 		
 		console.log("2");
 		var datetime=  new Date();
@@ -408,7 +413,7 @@ router.get('/dashboard/:projectId/train/:ntwkfile_id/(:datafile_id)*', authentic
 		var options = { hour12: false };
 		timing += ' ';
 		timing += datetime.toLocaleTimeString('en-US',options);
-		fs.open(req.session.logfilename , 'w', function(err , file){
+		fs.open(logpath , 'w', function(err , file){
 			if(err) {
 				console.log("logfile error");
 				throw err;
@@ -416,25 +421,24 @@ router.get('/dashboard/:projectId/train/:ntwkfile_id/(:datafile_id)*', authentic
 			console.log('Saved file!');
 		});
 
-		fs.open(req.session.studyfile , 'w', function(err , file){
+		fs.open(studypath , 'w', function(err , file){
 			if(err) throw err;
 			console.log('Saved file!');
 		});
-		var logstats = fs.statSync(`${req.session.logfilename}`);
+		var logstats = fs.statSync(`${logpath}`);
 		var logSize = logstats.size;
 		var logext = '.log';
-		var studypath = `./${projectID}/${req.session.studyfile}`;
-		var studystats = fs.statSync(`${req.session.studyfile}`);
+		var studystats = fs.statSync(`${studypath}`);
 		var studySize = studystats.size;
 		var studyext = '.pkl';
 		var newfile1= await pool.query("INSERT INTO File (fileId,fileName,path,fileSize,fileType,createdOn) VALUES ('"+logfile_id+"','"+req.session.logfilename+"','"+logpath+"','"+logSize+"','"+logext+"','"+timing+"')");
 		var newfile2= await pool.query("INSERT INTO File (fileId,fileName,path,fileSize,fileType,createdOn) VALUES ('"+studyfile_id+"','"+req.session.studyfile+"','"+studypath+"','"+studySize+"','"+studyext+"','"+timing+"')");
 
-		var savedModels= `./uploads/${projectID}/`;
-		var nametrainPath = `F:/Automated-MLpipeline/nodejs-express-sequelize-postgresql/uploads/${req.params.projectId}`;
-		// console("here" ,nametrainPath);
-		savedModels+=`${req.session.filename}`;
+		var savedModels= `./uploads/${projectID}/${req.session.filename}`;
+		var nametrainPath = `uploads.${req.params.projectId}.${req.session.nametrain}`;
 		var savedModelsSecond = savedModels+"/";
+		var pathOfLogfile = `./uploads/${projectID}/${req.session.logfilename}`;
+		var pathOfStudyfile = `./uploads/${projectID}/${req.session.studyfile}`;
 		fs.mkdir(`./uploads/${projectID}/${req.session.filename}`, (err) => {
     		if (err) {
         	return console.error(err);
@@ -443,7 +447,7 @@ router.get('/dashboard/:projectId/train/:ntwkfile_id/(:datafile_id)*', authentic
     		console.log('Directory created successfully!');
 		});
 		console.log("entering spawn");
-		child = spawn('python', ["train.py", `${req.session.filename}`, `${direction}`, `${nametrainPath}`, `${nametrain}`, `${savedModelsSecond}`] );
+		var child = spawn('python', ["train.py", `${req.session.filename}`, `${req.session.direction}`, `${nametrainPath}`, `${savedModelsSecond}`, `${pathOfLogfile}`, `${pathOfStudyfile}`] );
 		var out="";
         //handle error in creation of process
         child.on('error',(err) => {
@@ -460,10 +464,14 @@ router.get('/dashboard/:projectId/train/:ntwkfile_id/(:datafile_id)*', authentic
 		});
 		console.log("spawned");
         var processID = child.pid;
+        console.log("intrin",processID);
         var running = "";
         if(child.exitCode == null) running = "running";
+
+        processDict[processID] = child;
+
 		var newlogfile = await pool.query( 
-			"INSERT INTO logs (path, processId, networkId, projectId, status ) VALUES ('"+req.session.filename+"', '"+processID+"', '"+nfile_id+"', '"+projectID+"', '"+running+"')");
+			"INSERT INTO logs (path, processId, networkId, projectId, status ) VALUES ('"+logpath+"', '"+processID+"', '"+nfile_id+"', '"+projectID+"', '"+running+"')");
 		newlogfile = await pool.query("UPDATE logs SET datasetId = array_append(datasetId,'"+dfiles+"') WHERE projectId='"+projectID+"'");
 		
 		child.on('SIGTERM' , async(code) => {
@@ -496,19 +504,33 @@ router.get('/dashboard/:projectId/train/:ntwkfile_id/(:datafile_id)*', authentic
 				}
 				var number= out.indexOf("##");
 				var bestTrial = out.substring(number+2);
+				bestTrial = bestTrial.trim();
 				var ext="";
-				fs.readdir(savedModels, (err, files) => {
-  					files.forEach(file => {
-    					console.log(file);
-    					ext = path.extname(file);
-  					});
+				// fs.readdir(savedModels, (err, files) => {
+  		// 			files.forEach(file => {
+    // 					console.log("kkk", file);
+    // 					ext = path.extname(file);
+    // 					console.log(ext);
+  		// 			});
+				// });
+				filenames = fs.readdirSync(savedModels);
+				console.log("\nCurrent directory filenames:");
+				filenames.forEach(file => {
+				  console.log(file);
+				  ext = path.extname(file);
 				});
-				var prevbestModelFile = `uploads/${req.params.projectId}/${req.session.filename}/` + bestTrial+"."+ext;
-				var newdir =  `uploads/${req.params.projectId}`;
-				var bestmodelFile = evalid+"."+ext;
-				const currentPath = path.join(__dirname, prevbestModelFile );
-				const newPath = path.join(__dirname, newdir, bestmodelFile);
+				// await sleep(1000);
 
+				console.log("extval",ext);
+				var currentPath = `./uploads/${req.params.projectId}/${req.session.filename}/` + bestTrial+ext;
+				// var prevbestModelFile = bestTrial+ ".h5";
+				var newdir =  `./uploads/${req.params.projectId}`;
+				var bestmodelFile = evalid+ext;
+				// var bestmodelFile = evalid+".h5";
+				// const currentPath = path.join(__dirname, prevbestModelFile );
+				// const currentPath= prevbestModelFile;
+				const newPath = path.join(newdir, bestmodelFile);
+				console.log(currentPath);
 				fs.rename(currentPath, newPath, function(err) {
 				  if (err) {
 				    throw err
@@ -516,19 +538,19 @@ router.get('/dashboard/:projectId/train/:ntwkfile_id/(:datafile_id)*', authentic
 				    console.log("Successfully moved the file!")
 				  }
 				});
-
 				fs.rmdir(savedModels, { recursive: true }, (err) => {
 				    if (err) {
 				        throw err;
 				    }
 				    console.log(`${savedModels} is deleted!`);
 				});
-				newdir+= bestmodelFile;
+				newdir+= "/"+bestmodelFile;
 				var predicid = uuidv4();
 				parsedId= uuidParse(predicid);
-				predicid= uuidStringify(predicid);
-				var fpath = path.join(__dirname, newdir);
+				predicid= uuidStringify(parsedId);
+				var fpath = newdir;/*path.join(__dirname, newdir);*/
 				var fext = ext;
+				console.log(fext);
 				var stats = fs.statSync(`${fpath}`)
 				var fsize= stats.size;
 				var datetime=  new Date();
@@ -538,16 +560,16 @@ router.get('/dashboard/:projectId/train/:ntwkfile_id/(:datafile_id)*', authentic
 				timing += datetime.toLocaleTimeString('en-US',options);
 				var newfile3 = await pool.query("INSERT INTO File (fileId,fileName,path,fileSize,fileType,createdOn) VALUES ('"+predicid+"','"+bestmodelFile+"','"+fpath+"','"+fsize+"','"+fext+"','"+timing+"')");
 				var neweval = await pool.query( 
-				"INSERT INTO predictions (projectId, path, evaluationId, networkId , networkName, bestModel) VALUES ('"+projectID+"','"+req.session.filename+"', '"+evalid+"', '"+nfile_id+"', '"+netname+"', '"+predicid+"')");
+				"INSERT INTO predictions (projectId, path, evaluationId, networkId , networkName, bestModel) VALUES ('"+projectID+"','"+logpath+"', '"+evalid+"', '"+nfile_id+"', '"+netname+"', '"+predicid+"')");
 				neweval = await pool.query("UPDATE predictions SET datasetId = array_append(datasetId,'"+dfiles+"') WHERE projectId='"+projectID+"'");
 				neweval = await pool.query("UPDATE predictions SET datasetId = array_append(datasetName,'"+dname+"') WHERE projectId='"+projectID+"'");
 				// let metriclink = `/dashboard/${projectID}/metrics/${evalid}/${ntwkfile_id}`;
 
-				dfile_id.forEach((x) => {
-				    networklink += `/${x}`;
-				});
-				res.redirect(`${metriclink}`);
-			}
+			// 	dfile_id.forEach((x) => {
+			// 	    networklink += `/${x}`;
+			// 	});
+			// 	res.redirect(`${metriclink}`);
+			 }
 			 
 			else console.log(`Child process terminated with code ${code}`);
 		})
@@ -564,9 +586,25 @@ router.post('/dashboard/:projectId/train/:ntwkfile_id/(:datafile_id)*', async(re
 		var projectID= req.params.projectId;
 		var nfile_id = req.params.ntwkfile_id;
 		var dfile_id = [req.params.datafile_id].concat(req.params[0].split('/').slice(1));
-		var processing=req.session.child;
-		processing.kill('SIGTERM');
-		var logupdate = await pool.query("UPDATE logs SET status='killed' where processId='"+processID+"'");
+		//var processing=req.session.child;
+		var logpath = `./uploads/${projectID}/${req.session.logfilename}`; 
+		var childID = await pool.query("SELECT processId FROM logs where path='"+logpath+"'");
+		// console.log(childID.rows[0]);
+		// console.log("nextl", childID);
+		var childIDs = (childID.rows[0].processid).toString();
+		childIDs = Number(childIDs);
+		console.log("inkill", childIDs);
+		// var processing = processDict[childID];
+		// processing.kill('SIGTERM');
+		ps.kill( childIDs, 'SIGTERM', function( err ) {
+		    if (err) {
+		        throw new Error( err );
+		    }
+		    else {
+		        console.log( 'Process %s has been killed without a clean-up!', childIDs );
+		    }
+		});
+		var logupdate = await pool.query("UPDATE logs SET status='killed' where processId='"+childIDs+"'");
 		res.send('Training Killed!');
 	}
 	catch(err){
@@ -581,80 +619,143 @@ router.put('/dashboard/:projectId/train/:ntwkfile_id/(:datafile_id)*', async(req
 		var projectID= req.params.projectId;
 		var nfile_id = req.params.ntwkfile_id;
 		var dfile_id = [req.params.datafile_id].concat(req.params[0].split('/').slice(1));
-		var processing=req.session.child;
-		processing.kill('SIGHUP');  //this signal will reload config files and denotes hang of process maybe due to terminal closing
-		req.session.child = spawn('python', ['resume.py', `${req.session.filename}`] );
+		var dfiles=[];
+		for(var i=1; i<dfile_id.length; i++){
+			var idfile_id = dfile_id[i];
+			var idatasetname;
+			if(i==1) idatasetname= dfile_id[0]+dfile_id[1];
+			else idatasetname = dfile_id[i];
+			dfiles.push(`${idatasetname}`)
+		}
+		var logpath = `./uploads/${projectID}/${req.session.logfilename}`; 
+		var childID = await pool.query("SELECT processId FROM logs where path='"+logpath+"'");
+		var childIDs = (childID.rows[0].processid).toString();
+		childIDs = Number(childIDs);
+		console.log("inkill", childIDs);
+		ps.kill( childIDs, 'SIGTERM', function( err ) {
+		    if (err) {
+		        throw new Error( err );
+		    }
+		    else {
+		        console.log( 'Process %s has been killed without a clean-up!', childIDs );
+		    }
+		});
+		var logupdate = await pool.query("UPDATE logs SET status='running' where processId='"+childIDs+"'");
+		var idupdate = await pool.query("UPDATE logs SET processId = '"+childIDs+"' where path = '"+logpath+"'");
+		var savedModels= `./uploads/${projectID}/${req.session.filename}`;
+		var nametrainPath = `uploads.${req.params.projectId}.${req.session.nametrain}`;
+		var savedModelsSecond = savedModels+"/";
+		var pathOfLogfile = `./uploads/${projectID}/${req.session.logfilename}`;
+		var pathOfStudyfile = `./uploads/${projectID}/${req.session.studyfile}`;
+		var child = spawn('python', ['resume.py', `${req.session.filename}`, `${req.session.direction}`, `${nametrainPath}`, `${savedModelsSecond}`, `${pathOfLogfile}`, `${pathOfStudyfile}`] );
+		var processID = child.pid
+		var running = "";
+        if(child.exitCode == null) running = "running";
 
-		req.session.child.on('error',(err) => {
+		var out="";
+		child.on('error',(err) => {
         	console.log(' failed to start  child process ' + err);
         });
 
-        req.session.child.stdout.on('data', (data) => {
+        child.stdout.on('data', (data) => {
 		  console.log(`stdout: ${data}`);
+		  out+=data.toString();
 		});
 
-		req.session.child.stderr.on('data', (data) => {
+		child.stderr.on('data', (data) => {
 		  console.error(`stderr: ${data}`);
 		});
-        req.session.child.on('SIGTERM' , async(code) => {
+        child.on('SIGTERM' , async(code) => {
 			console.log('child process terminated');
-			// var logupdate = await pool.query("UPDATE logs SET status='killed' where processId='"+processID+"'");
+			var logupdate = await pool.query("UPDATE logs SET status='killed' where processId='"+processID+"'");
 		});
-        var newfilewatch="";
+
         var dir= `./uploads/${projectID}`;
 		var directory = `./uploads/${projectID}`;
-		fs.watch(`${dir}`, (eventType, filenamewatch) => { 
-            if(eventType === 'rename')
-            {
-                newfilewatch = filenamewatch;
-                directory = `./uploads/${projectID}/${newfilewatch}`;
-            }
-        }); 
         //handles the final exit of process
-		req.session.child.on('exit' , async(code , signal) => {
+		child.on('exit' , async(code , signal) => {
 			if(code==0){ 
 				console.log(`child process was successfully exited with code ${code}`); 
-			// 	var logupdate = await pool.query("UPDATE logs SET status='status' where processId='"+processID+"'");
-			// 	var evalid = uuidv4();
-			// 	var parsedId= uuidParse(evalid);
-			// 	var evalid= uuidStringify(parsedId);
-			// 	var netname = await pool.query("SELECT name from networks where networkId='"+nfile_id+"'");
-			// 	var dname=[];
-			// 	for(var i=0; i<dfile_id.length; i++){
-			// 		var idfile_id = dfile_id[i];
-			// 		var idatasetname = await pool.query("SELECT name from datasets where datasetId='"+idfile_id+"'")
-			// 		dname.push(`${idatasetname}`)
-			// 	}
-			// 	if(newfilewatch){
-			// 		var predicid = uuidv4();
-			// 		parsedId= uuidParse(predicid);
-			// 		predicid= uuidStringify(predicid);
-			// 		var fpath = directory;
-			// 		var fext = path.extname(directory);
-			// 		var stats = fs.statSync(`${newfilewatch}`)
-			// 		var fsize= stats.size;
-			// 		var datetime=  new Date();
-			// 		timing = datetime.toISOString().slice(0,10);
-			// 		options = { hour12: false };
-			// 		timing += ' ';
-			// 		timing += datetime.toLocaleTimeString('en-US',options);
-			// 		var newfile3 = await pool.query("INSERT INTO File (fileId,fileName,path,fileSize,fileType,createdOn) VALUES ('"+predicid+"','"+newfilewatch+"','"+fpath+"','"+fsize+"','"+fext+"','"+timing+"')");
-			// 		var neweval = await pool.query( 
-			// 	"INSERT INTO predictions (projectId, path, evaluationId, networkId , networkName, predictionFileId) VALUES ('"+projectID+"','"+req.session.filename+"', '"+evalid+"', '"+nfile_id+"', '"+netname+"', '"+predicid+"')");
-			// 	}
-			// 	else {
-			// 		var neweval = await pool.query( 
-			// "INSERT INTO predictions (projectId, path, evaluationId, networkId , networkName) VALUES ('"+projectID+"','"+req.session.filename+"', '"+evalid+"', '"+nfile_id+"', '"+netname+"')");
-			// 	}
-			// 	neweval = await pool.query("UPDATE predictions SET datasetId = array_append(datasetId,'"+dfiles+"') WHERE projectId='"+projectID+"'");
-			// 	neweval = await pool.query("UPDATE predictions SET datasetId = array_append(datasetName,'"+dname+"') WHERE projectId='"+projectID+"'");
-				
+			console.log(`child process was successfully exited with code ${code}`); 
+				running = "successfull";
+				var logupdate = await pool.query("UPDATE logs SET status='"+running+"' where processId='"+processID+"'");
+				var evalid = uuidv4();
+				var parsedId= uuidParse(evalid);
+				var evalid= uuidStringify(parsedId);
+				var netname = await pool.query("SELECT name from networks where networkId='"+nfile_id+"'");
+				var dname=[];
+				for(var i=0; i<dfile_id.length; i++){
+					var idfile_id = dfile_id[i];
+					var idatasetname = await pool.query("SELECT name from datasets where datasetId='"+idfile_id+"'")
+					dname.push(`${idatasetname}`)
+				}
+				var number= out.indexOf("##");
+				var bestTrial = out.substring(number+2);
+				bestTrial = bestTrial.trim();
+				var ext="";
+				// fs.readdir(savedModels, (err, files) => {
+  		// 			files.forEach(file => {
+    // 					console.log("kkk", file);
+    // 					ext = path.extname(file);
+    // 					console.log(ext);
+  		// 			});
+				// });
+				filenames = fs.readdirSync(savedModels);
+				console.log("\nCurrent directory filenames:");
+				filenames.forEach(file => {
+				  console.log(file);
+				  ext = path.extname(file);
+				});
+				// await sleep(1000);
+
+				console.log("extval",ext);
+				var currentPath = `./uploads/${req.params.projectId}/${req.session.filename}/` + bestTrial+ext;
+				// var prevbestModelFile = bestTrial+ ".h5";
+				var newdir =  `./uploads/${req.params.projectId}`;
+				var bestmodelFile = evalid+ext;
+				// var bestmodelFile = evalid+".h5";
+				// const currentPath = path.join(__dirname, prevbestModelFile );
+				// const currentPath= prevbestModelFile;
+				const newPath = path.join(newdir, bestmodelFile);
+				console.log(currentPath);
+				fs.rename(currentPath, newPath, function(err) {
+				  if (err) {
+				    throw err
+				  } else {
+				    console.log("Successfully moved the file!")
+				  }
+				});
+				fs.rmdir(savedModels, { recursive: true }, (err) => {
+				    if (err) {
+				        throw err;
+				    }
+				    console.log(`${savedModels} is deleted!`);
+				});
+				newdir+= "/"+bestmodelFile;
+				var predicid = uuidv4();
+				parsedId= uuidParse(predicid);
+				predicid= uuidStringify(parsedId);
+				var fpath = newdir;/*path.join(__dirname, newdir);*/
+				var fext = ext;
+				console.log(fext);
+				var stats = fs.statSync(`${fpath}`)
+				var fsize= stats.size;
+				var datetime=  new Date();
+				timing = datetime.toISOString().slice(0,10);
+				options = { hour12: false };
+				timing += ' ';
+				timing += datetime.toLocaleTimeString('en-US',options);
+				var newfile3 = await pool.query("INSERT INTO File (fileId,fileName,path,fileSize,fileType,createdOn) VALUES ('"+predicid+"','"+bestmodelFile+"','"+fpath+"','"+fsize+"','"+fext+"','"+timing+"')");
+				var neweval = await pool.query( 
+				"INSERT INTO predictions (projectId, path, evaluationId, networkId , networkName, bestModel) VALUES ('"+projectID+"','"+logpath+"', '"+evalid+"', '"+nfile_id+"', '"+netname+"', '"+predicid+"')");
+				neweval = await pool.query("UPDATE predictions SET datasetId = array_append(datasetId,'"+dfiles+"') WHERE projectId='"+projectID+"'");
+				neweval = await pool.query("UPDATE predictions SET datasetId = array_append(datasetName,'"+dname+"') WHERE projectId='"+projectID+"'");
 				// let metriclink = `/dashboard/${projectID}/metrics/${evalid}/${ntwkfile_id}`;
 
-				// dfile_id.forEach((x) => {
-				//     networklink += `/${x}`;
-				// });
-				// res.redirect(`${metriclink}`);
+			// 	dfile_id.forEach((x) => {
+			// 	    networklink += `/${x}`;
+			// 	});
+			// 	res.redirect(`${metriclink}`);
 			}
 			else console.log(`Child process terminated with code ${code}`);
 		})
@@ -709,23 +810,32 @@ router.get('/dashboard/:projectId/metrics/:evaluationID/:ntwkfile_id/(:datafile_
         	name : 'userfile' ,
         	maxCount : 10
         }
-    ]), authenticateJWT, async(req,res) =>{
+    ]), async(req,res) =>{
 	try{
 		var projectID= req.params.projectId;
+		console.log(projectID);
+		console.log(typeof(projectID));
 		var eval_id = req.params.evaluationID;
 		var nfile_id = req.params.ntwkfile_id;
 		var nametrain = req.body.nametrain;
-		var roc = req.body.roc;
-		var precision = req.body.precision;
+		var nametrainPath = `uploads.${req.params.projectId}.${nametrain}`;
+		var bestmodelidq = await pool.query("SELECT bestModel FROM predictions where evaluationId='"+eval_id+"'");
+		var bestmodelid=(bestmodelidq.rows[0].bestmodel).toString();
+		// var bestmodelPathq = await pool.query("SELECT fileType FROM File where fileId= '"+bestmodelid+"'");
+		// var bestmodelPathq= bestmodelPathq.rows[0].fileType;
+		// bestmodelPath= JSON.stringify(bestmodelPath);
+		bestmodelPath= eval_id;
+		// console.log(bestmodelPathq);
 		var confusion = req.body.confusion;
 		var path = `./uploads/${req.params.projectId}/${req.params.evaluationID}`;
+		var pathConfusion = `./uploads/${req.params.projectId}/${req.session.filename}`
 		var dfile_id = [req.params.datafile_id].concat(req.params[0].split('/').slice(1));
 		// req.session.filename="9ea9706f-75fb-456d-add1-a01669fe6ca0" //comment later
 		//child process
 		var description = req.body.description;
-		var visibile = req.body.visible;
+		var visible = req.body.visible;
 		var addpredic = await pool.query("UPDATE predictions SET modelDescription='"+description+"' , visibility = ' "+visible+"' WHERE evaluationId='"+eval_id+"'");
-		var visualprocess = spawn('python', ['metrics.py',`${nametrain}`,`${path}`,`${req.session.filename}`,`${roc}`, `${confusion}`,`${precision}` ] );
+		var visualprocess = spawn('python', ['metrics.py',`${nametrainPath}`,`${path}`,`${pathConfusion}`, `${confusion}`,`${bestmodelPath}`] );
 
 		 visualprocess.on('error',(err) => {
         	console.log(' failed to start  child process ' + err);
